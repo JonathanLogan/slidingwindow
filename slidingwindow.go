@@ -9,29 +9,62 @@ import (
 	"strings"
 )
 
-// Reason explains why the sliding window has made a decision.
-type Reason uint8
+// ALGO ===================
 
-const (
-	ReasonFirst Reason = iota
-	ReasonReuse
-	ReasonShift
-	ReasonOutOfWindow
-)
-
-func (r Reason) String() string {
-	switch r {
-	case ReasonFirst:
-		return "First"
-	case ReasonReuse:
-		return "Reuse"
-	case ReasonShift:
-		return "Shift"
-	case ReasonOutOfWindow:
-		return "Small"
-	}
-	return "Unknown"
+// SlidingWindow implements a sliding window algorithm.
+type SlidingWindow struct {
+	offset uint64
+	bitmap Int256
 }
+
+// CheckAndSetNonce returns true if the nonce is valid, false otherwise. It updates the SlidingWindow to prevent the nonce
+// from being valid in the future.
+func (window *SlidingWindow) CheckAndSetNonce(nonce uint64) (Reason, bool) {
+	const windowSize = 256
+	// Is the nonce on the left of the window and hence invalid?
+	if nonce < window.offset {
+		return ReasonOutOfWindow, false
+	}
+	// Is the nonce on the right of the window? If yes, shift window and update offset.
+	if nonce >= window.offset+windowSize {
+		newOffset := nonce - windowSize + 1
+		shift := newOffset - window.offset
+		window.offset = newOffset
+		window.bitmap = shiftLeft(window.bitmap, shift)
+		window.bitmap = setBit(window.bitmap, uint8(nonce-window.offset))
+		return ReasonShift, true
+	}
+	// Nonce is within the window.
+	bitPos := uint8(nonce - window.offset)
+	if isBitSet(window.bitmap, bitPos) {
+		return ReasonReuse, false
+	}
+	window.bitmap = setBit(window.bitmap, bitPos)
+	return ReasonFirst, true
+}
+
+// CheckNonce returns true if the nonce is valid. It does not change the state.
+func (window *SlidingWindow) CheckNonce(nonce uint64) (Reason, bool) {
+	const windowSize = 256
+	// Is the nonce on the left of the window and hence invalid?
+	if nonce < window.offset {
+		return ReasonOutOfWindow, false
+	}
+	// Is the nonce on the right of the window? If yes, shift window and update offset.
+	if nonce >= window.offset+windowSize {
+		return ReasonShift, true
+	}
+	// Nonce is within the window.
+	bitPos := uint8(nonce - window.offset)
+	if isBitSet(window.bitmap, bitPos) {
+		return ReasonReuse, false
+	}
+	return ReasonFirst, true
+}
+
+// ALGO END ===============
+
+// BIT STUFF ==============
 
 // Int256 is a simple 256 bit integer type.
 type Int256 [4]uint64
@@ -88,55 +121,30 @@ func isBitSet(i Int256, a uint8) bool {
 	return i[a/64]&(0x01<<(63-(a%64))) != 0
 }
 
-// SlidingWindow implements a sliding window algorithm.
-type SlidingWindow struct {
-	offset uint64
-	bitmap Int256
-}
+// BIT STUFF END ==========
 
-// CheckAndSetNonce returns true if the nonce is valid, false otherwise. It updates the SlidingWindow to prevent the nonce
-// from being valid in the future.
-func (window *SlidingWindow) CheckAndSetNonce(nonce uint64) (Reason, bool) {
-	const windowSize = 256
-	// Is the nonce on the left of the window and hence invalid?
-	if nonce < window.offset {
-		return ReasonOutOfWindow, false
-	}
-	// Is the nonce on the right of the window? If yes, shift window and update offset.
-	if nonce >= window.offset+windowSize {
-		newOffset := nonce - windowSize + 1
-		shift := newOffset - window.offset
-		window.offset = newOffset
-		window.bitmap = shiftLeft(window.bitmap, shift)
-		window.bitmap = setBit(window.bitmap, uint8(nonce-window.offset))
-		return ReasonShift, true
-	}
-	// Nonce is within the window.
-	bitPos := uint8(nonce - window.offset)
-	if isBitSet(window.bitmap, bitPos) {
-		return ReasonReuse, false
-	}
-	window.bitmap = setBit(window.bitmap, bitPos)
-	return ReasonFirst, true
-}
+// Reason explains why the sliding window has made a decision.
+type Reason uint8
 
-// CheckNonce returns true if the nonce is valid. It does not change the state.
-func (window *SlidingWindow) CheckNonce(nonce uint64) (Reason, bool) {
-	const windowSize = 256
-	// Is the nonce on the left of the window and hence invalid?
-	if nonce < window.offset {
-		return ReasonOutOfWindow, false
+const (
+	ReasonFirst Reason = iota
+	ReasonReuse
+	ReasonShift
+	ReasonOutOfWindow
+)
+
+func (r Reason) String() string {
+	switch r {
+	case ReasonFirst:
+		return "First"
+	case ReasonReuse:
+		return "Reuse"
+	case ReasonShift:
+		return "Shift"
+	case ReasonOutOfWindow:
+		return "Small"
 	}
-	// Is the nonce on the right of the window? If yes, shift window and update offset.
-	if nonce >= window.offset+windowSize {
-		return ReasonShift, true
-	}
-	// Nonce is within the window.
-	bitPos := uint8(nonce - window.offset)
-	if isBitSet(window.bitmap, bitPos) {
-		return ReasonReuse, false
-	}
-	return ReasonFirst, true
+	return "Unknown"
 }
 
 func main() {
