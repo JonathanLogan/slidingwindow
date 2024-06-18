@@ -94,9 +94,9 @@ type SlidingWindow struct {
 	bitmap Int256
 }
 
-// CheckNonce returns true if the nonce is valid, false otherwise. It updates the SlidingWindow to prevent the nonce
+// CheckAndSetNonce returns true if the nonce is valid, false otherwise. It updates the SlidingWindow to prevent the nonce
 // from being valid in the future.
-func (window *SlidingWindow) CheckNonce(nonce uint64) (Reason, bool) {
+func (window *SlidingWindow) CheckAndSetNonce(nonce uint64) (Reason, bool) {
 	const windowSize = 256
 	// Is the nonce on the left of the window and hence invalid?
 	if nonce < window.offset {
@@ -120,6 +120,25 @@ func (window *SlidingWindow) CheckNonce(nonce uint64) (Reason, bool) {
 	return ReasonFirst, true
 }
 
+// CheckNonce returns true if the nonce is valid. It does not change the state.
+func (window *SlidingWindow) CheckNonce(nonce uint64) (Reason, bool) {
+	const windowSize = 256
+	// Is the nonce on the left of the window and hence invalid?
+	if nonce < window.offset {
+		return ReasonOutOfWindow, false
+	}
+	// Is the nonce on the right of the window? If yes, shift window and update offset.
+	if nonce >= window.offset+windowSize {
+		return ReasonShift, true
+	}
+	// Nonce is within the window.
+	bitPos := uint8(nonce - window.offset)
+	if isBitSet(window.bitmap, bitPos) {
+		return ReasonReuse, false
+	}
+	return ReasonFirst, true
+}
+
 func main() {
 	nonces := argsToInt()
 	if len(nonces) == 0 {
@@ -131,7 +150,7 @@ func main() {
 	fmt.Println("Nonce\tOK?\tReason\tOffset\tBitmap")
 	fmt.Println(strings.Repeat("=", 288))
 	for _, nonce := range nonces {
-		reason, ok := window.CheckNonce(nonce)
+		reason, ok := window.CheckAndSetNonce(nonce)
 		fmt.Printf("%d\t%t\t%s\t%d\t%s\n", nonce, ok, reason, window.offset, printWindow(window, nonce))
 	}
 }
